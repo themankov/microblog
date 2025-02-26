@@ -7,11 +7,19 @@ from flask_login import LoginManager
 import logging
 from logging.handlers import SMTPHandler, RotatingFileHandler
 app = Flask(__name__, template_folder='templates')
+
+# Загрузка конфигурации
 app.config.from_object(Config)
+
+# Инициализация базы данных и миграций
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+
+# Инициализация Flask-Login и страницы входа в приложение
 login = LoginManager(app)
 login.login_view = 'login'
+
+# Настройка логирования
 if not app.debug:
     if app.config['MAIL_SERVER']:
         auth = None
@@ -20,6 +28,8 @@ if not app.debug:
         secure = None
         if app.config['MAIL_USE_TLS']:
             secure = ()
+
+        #отправка на почту сообщений уровня Error
         mail_handler = SMTPHandler(
             mailhost=(app.config['MAIL_SERVER'], app.config['MAIL_PORT']),
             fromaddr='no-reply@' + app.config['MAIL_SERVER'],
@@ -29,6 +39,8 @@ if not app.debug:
         app.logger.addHandler(mail_handler)
     if not os.path.exists('logs'):
         os.mkdir('logs')
+
+    # запись логов в файл
     file_handler = RotatingFileHandler('logs/microblog.log', maxBytes=10240,
                                        backupCount=10)
     file_handler.setFormatter(logging.Formatter(

@@ -2,14 +2,22 @@ from flask import render_template, redirect, flash, url_for, request
 from urllib.parse import urlsplit
 from datetime import datetime, timezone
 from flask_login import current_user, login_user, logout_user, login_required
-from app.forms import LoginForm, RegistrationForm, EditProfileForm
-from app import app
+from app.forms import LoginForm, RegistrationForm, EditProfileForm,EmptyForm, PostForm
+from app import app,db
 import sqlalchemy as sa
-from app import db
-from app.models import User
-from app.forms import EmptyForm
+from app.models import User,Post
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+  """
+        Вход пользователя в систему
+
+        Если пользователь уже вошел в систему, его перенаправляет на главную страницу.
+        Если нет, отправляется форма входа по шаблону login.html
+        При нажатии submit идет проверка:
+        Если пользователя нет или пароль неверный перенаправляют на ту же страницу с сообщением через flash
+        Если пользователь есть, то производят redirect на следующую страницу, взятую из аргументов
+  """
   if current_user.is_authenticated:
     return redirect(url_for('index'))
   form = LoginForm()
@@ -28,6 +36,15 @@ def login():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    """
+            Регистрация пользователя в системе
+
+            Если пользователь уже вошел в систему, его перенаправляет на главную страницу.
+            Если нет, отправляется форма регистрации по шаблону register.html
+            При нажатии submit создается пользователь и выводится сообщение через flash
+            Если пользователя нет или пароль неверный перенаправляют на ту же страницу с сообщением через flash
+            Если пользователь есть, то производят redirect на следующую страницу, взятую из аргументов
+    """
     if current_user.is_authenticated:
         return redirect(url_for('index'))
     form = RegistrationForm()
@@ -39,13 +56,20 @@ def register():
         flash('Congratulations, you are now a registered user!')
         return redirect(url_for('login'))
     return render_template('register.html', title='Register', form=form)
-from app.forms import PostForm
-from app.models import Post
+
 
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/index', methods=['GET', 'POST'])
 @login_required
 def index():
+    """
+                Главная страница
+
+                Проверка на наличие авторизации
+                Отправляем форму написания постов через шаблон index.html.
+                При отправке поста он создается в бд, пользователь перенаправляется на эту же страницу и получает сообщение через flash
+                Также учитывается пагинация для постов, номер страницы берется из аргументов запроса
+        """
     page = request.args.get('page', 1, type=int)
     form = PostForm()
     if form.validate_on_submit():
@@ -70,6 +94,14 @@ def index():
 @app.route('/user/<username>')
 @login_required
 def user(username):
+    """
+                Просмотр страниц других пользователей
+
+                Проверка на наличие авторизации
+                Показ страницы пользователя по username
+                Пагинация постов через страницы, номер которых берется из аргументов запроса
+                Добавляем форму подписки на пользователя
+        """
     user = db.first_or_404(sa.select(User).where(User.username == username))
     page = request.args.get('page', 1, type=int)
     query = user.posts.select().order_by(Post.timestamp.desc())
@@ -85,6 +117,11 @@ def user(username):
 
 @app.before_request
 def before_request():
+    """
+                 Функция обновлении времени перед каждым запросом
+
+                 Если пользователь авторизован, то любой его запрос меняет его последнее время в сети
+         """
     if current_user.is_authenticated:
         current_user.last_seen = datetime.now(timezone.utc)
         db.session.commit()
@@ -92,6 +129,13 @@ def before_request():
 @app.route('/edit_profile', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
+    """
+                 Редактирование профиля
+
+                 Проверка на наличие авторизации
+                 Добавляем форму редактирования, пробрасывая внутрь наше имя для хранения состояния, через шаблон edit_profile.html
+                 При отправке формы мы редиректим на эту же страницу и выводим сообщение через flash
+         """
     form = EditProfileForm(current_user.username)
     if form.validate_on_submit():
         current_user.username = form.username.data
@@ -106,12 +150,24 @@ def edit_profile():
                            form=form)
 @app.route('/logout')
 def logout():
+    """
+                 Выход пользователя из системы
+
+                 При выходе из системы редиректим на главную страницу
+         """
     logout_user()
     return redirect(url_for('index'))
 
 @app.route('/follow/<username>', methods=['POST'])
 @login_required
 def follow(username):
+    """
+                 Подписка на пользователя
+
+                 Проверка на наличие авторизации
+                 Добавляем форму подписки на пользователя
+                 Если форма успешно отправлена,то редирект на эту же страницу с сообщением через flash
+    """
     form = EmptyForm()
     if form.validate_on_submit():
         user = db.session.scalar(
@@ -133,6 +189,13 @@ def follow(username):
 @app.route('/unfollow/<username>', methods=['POST'])
 @login_required
 def unfollow(username):
+    """
+                 Отписка от пользователя
+
+                 Проверка на наличие авторизации
+                 Добавляем форму подписки на пользователя
+                 Если форма успешно отправлена,то редирект на эту же страницу с сообщением через flash
+    """
     form = EmptyForm()
     if form.validate_on_submit():
         user = db.session.scalar(
@@ -153,6 +216,12 @@ def unfollow(username):
 @app.route('/explore')
 @login_required
 def explore():
+    """
+                 Просмотр всех постов пользователей
+
+                 Проверка на наличие авторизации
+                 Пагинация постов через страницы, номер которых берется из аргументов запроса
+         """
     page = request.args.get('page', 1, type=int)
     query = sa.select(Post).order_by(Post.timestamp.desc())
     posts = db.paginate(query, page=page,
